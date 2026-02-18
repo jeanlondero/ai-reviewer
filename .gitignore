@@ -1,0 +1,24 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.sublime-*
+
+# Test artifacts
+test/tmp/
+test/*.tap
+test/report/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Plan
+plan.md
