@@ -108,6 +108,60 @@ setup() {
   assert_output "Hello world"
 }
 
+@test "ai_validate_key: returns 0 on HTTP 200 (claude)" {
+  # Mock curl — find the -o argument to write response body
+  curl() {
+    local i outfile=""
+    for (( i=1; i<=$#; i++ )); do
+      if [[ "${!i}" == "-o" ]]; then
+        local next=$(( i + 1 ))
+        outfile="${!next}"
+        break
+      fi
+    done
+    [[ -n "$outfile" ]] && printf '{"content":[{"text":"h"}]}' > "$outfile"
+    printf '200'
+    return 0
+  }
+  export -f curl
+  run ai_validate_key "claude" "sk-ant-valid-key"
+  assert_success
+}
+
+@test "ai_validate_key: returns 1 on HTTP 401 (auth fail)" {
+  curl() {
+    local i outfile=""
+    for (( i=1; i<=$#; i++ )); do
+      if [[ "${!i}" == "-o" ]]; then
+        local next=$(( i + 1 ))
+        outfile="${!next}"
+        break
+      fi
+    done
+    [[ -n "$outfile" ]] && printf '{"error":{"message":"invalid"}}' > "$outfile"
+    printf '401'
+    return 0
+  }
+  export -f curl
+  run ai_validate_key "claude" "sk-ant-bad-key"
+  assert_failure
+  assert_equal "$status" 1
+}
+
+@test "ai_validate_key: returns 2 on network error" {
+  curl() { return 1; }
+  export -f curl
+  run ai_validate_key "openai" "test-key"
+  assert_failure
+  assert_equal "$status" 2
+}
+
+@test "ai_validate_key: rejects unknown provider" {
+  run ai_validate_key "unknown" "test-key"
+  assert_failure
+  assert_equal "$status" 1
+}
+
 @test "ai_client: uses env vars for provider config" {
   export AI_REVIEW_PROVIDER=openai
   export AI_REVIEW_API_KEY=test-key-123

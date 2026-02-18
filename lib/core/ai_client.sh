@@ -234,6 +234,91 @@ _ai_extract_text_gemini() {
   printf '%s' "$response" | sed -n 's/.*"text"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/p' | head -n1
 }
 
+# --- API key validation ---
+# Usage: ai_validate_key <provider> <api_key> [model]
+# Returns: 0=valid, 1=auth fail, 2=network error
+
+ai_validate_key() {
+  local provider="$1" api_key="$2" model="${3:-}"
+
+  case "$provider" in
+    claude)  _ai_validate_claude "$api_key" "$model" ;;
+    openai)  _ai_validate_openai "$api_key" ;;
+    gemini)  _ai_validate_gemini "$api_key" ;;
+    *)       return 1 ;;
+  esac
+}
+
+_ai_validate_claude() {
+  local api_key="$1" model="${2:-claude-haiku-4-5-20251001}"
+  local url="https://api.anthropic.com/v1/messages"
+
+  local body
+  body="$(printf '{"model": %s, "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]}' \
+    "$(_ai_json_escape "$model")")"
+
+  local body_file http_code
+  body_file="$(mktemp)"
+  trap 'rm -f "$body_file"' RETURN
+
+  http_code="$(curl -sS -w '%{http_code}' \
+    --max-time 15 \
+    -o "$body_file" \
+    -X POST \
+    -H "x-api-key: ${api_key}" \
+    -H "anthropic-version: 2023-06-01" \
+    -H "content-type: application/json" \
+    -d "$body" \
+    "$url" 2>/dev/null)" || return 2
+
+  case "$http_code" in
+    200) return 0 ;;
+    401|403) return 1 ;;
+    *) return 0 ;;  # Other codes (429, 5xx) mean auth worked
+  esac
+}
+
+_ai_validate_openai() {
+  local api_key="$1"
+  local url="https://api.openai.com/v1/models"
+
+  local body_file http_code
+  body_file="$(mktemp)"
+  trap 'rm -f "$body_file"' RETURN
+
+  http_code="$(curl -sS -w '%{http_code}' \
+    --max-time 15 \
+    -o "$body_file" \
+    -H "Authorization: Bearer ${api_key}" \
+    "$url" 2>/dev/null)" || return 2
+
+  case "$http_code" in
+    200) return 0 ;;
+    401|403) return 1 ;;
+    *) return 2 ;;
+  esac
+}
+
+_ai_validate_gemini() {
+  local api_key="$1"
+  local url="https://generativelanguage.googleapis.com/v1beta/models?key=${api_key}"
+
+  local body_file http_code
+  body_file="$(mktemp)"
+  trap 'rm -f "$body_file"' RETURN
+
+  http_code="$(curl -sS -w '%{http_code}' \
+    --max-time 15 \
+    -o "$body_file" \
+    "$url" 2>/dev/null)" || return 2
+
+  case "$http_code" in
+    200) return 0 ;;
+    400|401|403) return 1 ;;
+    *) return 2 ;;
+  esac
+}
+
 _ai_extract_error() {
   local response="$1"
   if command -v jq &>/dev/null; then
