@@ -61,3 +61,22 @@ setup() {
   assert_output --partial "ai-reviewer doctor"
   assert_output --partial "OS:"
 }
+
+@test "dispatcher: no args in non-TTY shows help" {
+  run "$AIR_BIN"
+  assert_success
+  assert_output --partial "USAGE"
+  assert_output --partial "COMMANDS"
+}
+
+@test "dispatcher: no args piped to cat shows help" {
+  run bash -c '"$1" | cat' _ "$AIR_BIN"
+  assert_success
+  assert_output --partial "USAGE"
+}
+
+@test "dispatcher: explicit help still works" {
+  run "$AIR_BIN" help
+  assert_success
+  assert_output --partial "COMMANDS"
+}

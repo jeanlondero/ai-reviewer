@@ -82,6 +82,72 @@ ${DIM}https://github.com/jeanlondero/ai-reviewer${RESET}
 EOF
 }
 
+# --- Interactive menu ---
+_air_interactive_menu() {
+  # Lazy-load interactive + models
+  source "${AIR_ROOT}/lib/core/interactive.sh"
+  source "${AIR_ROOT}/lib/core/models.sh"
+
+  local version
+  version="$(air_version)"
+
+  # Build status bar
+  local provider model api_key
+  provider="$(config_get 'provider' 2>/dev/null || true)"
+  model="$(config_get 'model' 2>/dev/null || true)"
+  api_key="$(config_get 'api_key' 2>/dev/null || true)"
+
+  printf '\n%s%s══ ai-reviewer v%s ══%s\n\n' "${BOLD}" "${MAGENTA}" "$version" "${RESET}" >&2
+
+  # Status line
+  local provider_display="${provider:-${DIM}[not set]${RESET}}"
+  local model_display="${model:-${DIM}[not set]${RESET}}"
+  local key_display
+  if [[ -n "$api_key" ]]; then
+    key_display="$(_air_mask_value "$api_key")"
+  else
+    key_display="${DIM}[missing]${RESET}"
+  fi
+
+  printf '  Provider: %s%s%s   Model: %s%s%s   API Key: %s  ' \
+    "${CYAN}" "$provider_display" "${RESET}" \
+    "${CYAN}" "$model_display" "${RESET}" \
+    "$key_display" >&2
+
+  if [[ -n "$provider" ]] && [[ -n "$api_key" ]]; then
+    air_status_label "configured" >&2
+  elif [[ -n "$provider" ]] || [[ -n "$api_key" ]]; then
+    air_status_label "partial" >&2
+  else
+    air_status_label "missing" >&2
+    printf '\n  %s→ Run "air config init" to get started%s' "${DIM}" "${RESET}" >&2
+  fi
+  printf '\n\n' >&2
+
+  local choice
+  air_menu "Select command:" choice \
+    "init:init           Initialize project" \
+    "ai-review:ai-review      AI code review" \
+    "ai-lint:ai-lint        AI lint (staged)" \
+    "commit-lint:commit-lint    Validate commits" \
+    "push:push           Validate and push" \
+    "pr:pr             Create PR (AI)" \
+    "config:config         Manage configuration" \
+    "doctor:doctor         Health check" \
+    "update:update         Self-update" || {
+    local rc=$?
+    if [[ $rc -eq 1 ]]; then
+      # Not interactive — fall back to help
+      _air_print_help
+      return 0
+    fi
+    return 0  # Cancelled
+  }
+
+  # Dispatch selected command
+  _air_run_command "$choice"
+}
+
 # --- Route command ---
 _air_run_command() {
   local cmd="${1:-help}"
@@ -153,4 +219,14 @@ for arg in "$@"; do
   [[ "$arg" != "--no-color" ]] && _air_args+=("$arg")
 done
 
-_air_run_command "${_air_args[@]+"${_air_args[@]}"}"
+# No args: interactive menu (TTY) or help (non-TTY)
+if [[ ${#_air_args[@]} -eq 0 ]]; then
+  source "${AIR_ROOT}/lib/core/interactive.sh"
+  if air_is_interactive; then
+    _air_interactive_menu
+  else
+    _air_print_help
+  fi
+else
+  _air_run_command "${_air_args[@]}"
+fi
