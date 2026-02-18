@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# bin/ai-reviewer — CLI dispatcher for ai-reviewer (alias: air).
+# Usage: ai-reviewer <command> [options]
+
+set -euo pipefail
+
+# --- Resolve AIR_ROOT via symlink chain ---
+_air_resolve_root() {
+  local source="${BASH_SOURCE[0]}"
+  while [[ -L "$source" ]]; do
+    local dir
+    dir="$(cd -P "$(dirname "$source")" && pwd)"
+    source="$(readlink "$source")"
+    [[ "$source" != /* ]] && source="${dir}/${source}"
+  done
+  local bin_dir
+  bin_dir="$(cd -P "$(dirname "$source")" && pwd)"
+  cd -P "${bin_dir}/.." && pwd
+}
+
+export AIR_ROOT
+AIR_ROOT="${AIR_ROOT:-$(_air_resolve_root)}"
+
+# --- Source core libs ---
+source "${AIR_ROOT}/lib/core/colors.sh"
+source "${AIR_ROOT}/lib/core/utils.sh"
+source "${AIR_ROOT}/lib/core/platform.sh"
+source "${AIR_ROOT}/lib/core/version.sh"
+source "${AIR_ROOT}/lib/core/dotenv.sh"
+source "${AIR_ROOT}/lib/core/global_config.sh"
+source "${AIR_ROOT}/lib/core/config.sh"
+
+# --- Bash version gate ---
+check_bash_version || exit 1
+
+# --- Load global config ---
+global_config_load
+
+# --- Load project environment ---
+air_find_project_root 2>/dev/null || true
+dotenv_load 2>/dev/null || true
+config_load 2>/dev/null || true
+
+# --- Help ---
+_air_print_help() {
+  local version
+  version="$(air_version)"
+
+  cat >&2 <<EOF
+${BOLD}ai-reviewer${RESET} ${DIM}v${version}${RESET} — AI-powered dev workflow CLI
+
+${BOLD}USAGE${RESET}
+  ai-reviewer <command> [options]
+  air <command> [options]
+
+${BOLD}COMMANDS${RESET}
+  ${GREEN}init${RESET}          Initialize ai-reviewer in the current project
+  ${GREEN}push${RESET}          Validate and push workflow
+  ${GREEN}pr${RESET}            Create pull request with AI-generated content
+  ${GREEN}commit-lint${RESET}   Validate conventional commit messages
+  ${GREEN}ai-review${RESET}     AI-powered code review
+  ${GREEN}ai-lint${RESET}       AI lint via git hooks
+  ${GREEN}config${RESET}        Manage global configuration
+  ${GREEN}doctor${RESET}        Health check: OS, bash, deps, config
+  ${GREEN}update${RESET}        Self-update ai-reviewer
+  ${GREEN}help${RESET}          Show this help message
+  ${GREEN}version${RESET}       Print version
+
+${BOLD}OPTIONS${RESET}
+  --help, -h     Show help
+  --version, -v  Print version
+  --no-color     Disable colored output
+
+${BOLD}EXAMPLES${RESET}
+  ${DIM}ai-reviewer doctor${RESET}       Check your setup
+  ${DIM}ai-reviewer ai-review${RESET}    Run AI code review
+  ${DIM}air push${RESET}                 Validate and push
+  ${DIM}air pr${RESET}                   Create a pull request
+
+${DIM}https://github.com/jeanlondero/ai-reviewer${RESET}
+EOF
+}
+
+# --- Route command ---
+_air_run_command() {
+  local cmd="${1:-help}"
+  shift 2>/dev/null || true
+
+  case "$cmd" in
+    init)
+      source "${AIR_ROOT}/lib/commands/init.sh"
+      command_init "$@"
+      ;;
+    push)
+      source "${AIR_ROOT}/lib/commands/push.sh"
+      command_push "$@"
+      ;;
+    pr)
+      source "${AIR_ROOT}/lib/commands/pr.sh"
+      command_pr "$@"
+      ;;
+    commit-lint)
+      source "${AIR_ROOT}/lib/commands/commit-lint.sh"
+      command_commit_lint "$@"
+      ;;
+    ai-review)
+      source "${AIR_ROOT}/lib/commands/ai-review.sh"
+      command_ai_review "$@"
+      ;;
+    ai-lint)
+      source "${AIR_ROOT}/lib/commands/ai-lint.sh"
+      command_ai_lint "$@"
+      ;;
+    config)
+      source "${AIR_ROOT}/lib/commands/config.sh"
+      command_config "$@"
+      ;;
+    doctor)
+      source "${AIR_ROOT}/lib/commands/doctor.sh"
+      command_doctor "$@"
+      ;;
+    update)
+      source "${AIR_ROOT}/lib/commands/update.sh"
+      command_update "$@"
+      ;;
+    help|--help|-h)
+      _air_print_help
+      ;;
+    version|--version|-v)
+      air_print_version
+      ;;
+    *)
+      error "Unknown command: ${cmd}"
+      info "Run 'ai-reviewer help' for usage"
+      exit 1
+      ;;
+  esac
+}
+
+# --- Handle --no-color before routing ---
+for arg in "$@"; do
+  if [[ "$arg" == "--no-color" ]]; then
+    export NO_COLOR=1
+    _air_init_colors
+    break
+  fi
+done
+
+# Filter out --no-color from args
+_air_args=()
+for arg in "$@"; do
+  [[ "$arg" != "--no-color" ]] && _air_args+=("$arg")
+done
+
+_air_run_command "${_air_args[@]+"${_air_args[@]}"}"
