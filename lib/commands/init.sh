@@ -26,10 +26,28 @@ command_init() {
     return 1
   fi
 
-  # Generate .ai-reviewer.yml
-  cat > "$config_file" <<'YAML'
-provider: claude
-model: claude-sonnet-4-20250514
+  # Detect configured provider/model from global config
+  local cfg_provider cfg_model
+  cfg_provider="$(config_get 'provider' 2>/dev/null || true)"
+  cfg_model="$(config_get 'model' 2>/dev/null || true)"
+
+  # Use configured values or fall back to defaults
+  local yml_provider="${cfg_provider:-claude}"
+  local yml_model="${cfg_model:-claude-sonnet-4-20250514}"
+
+  # If model doesn't match provider, use provider's default
+  if [[ -n "$cfg_provider" ]] && [[ -z "$cfg_model" ]]; then
+    case "$cfg_provider" in
+      claude) yml_model="claude-sonnet-4-20250514" ;;
+      openai) yml_model="gpt-4o" ;;
+      gemini) yml_model="gemini-2.0-flash" ;;
+    esac
+  fi
+
+  # Generate .ai-reviewer.yml with detected settings
+  cat > "$config_file" <<YAML
+provider: ${yml_provider}
+model: ${yml_model}
 review:
   strict: false
 commit_lint:
@@ -39,6 +57,10 @@ commit_lint:
 YAML
   success "Created .ai-reviewer.yml"
 
+  if [[ -n "$cfg_provider" ]]; then
+    info "Using configured provider: ${cfg_provider} / ${yml_model}"
+  fi
+
   # Detect lefthook and offer hook installation
   if check_dependency lefthook; then
     _init_setup_lefthook "$project_dir"
@@ -46,13 +68,36 @@ YAML
     info "Tip: install lefthook for git hook integration"
   fi
 
+  # Offer config init if no provider configured
+  if [[ -z "$cfg_provider" ]]; then
+    printf '\n' >&2
+    info "No AI provider configured yet."
+
+    # Lazy-load interactive for the offer
+    source "${AIR_ROOT}/lib/core/interactive.sh"
+    if air_is_interactive; then
+      if air_confirm "Run provider setup now?"; then
+        source "${AIR_ROOT}/lib/commands/config.sh"
+        _config_cmd_init
+        return 0
+      fi
+    else
+      info "Run 'air config init' to set up your AI provider"
+    fi
+  fi
+
   # Summary
   printf '\n' >&2
   header "Setup complete"
   info "Next steps:"
-  info "  1. Configure your AI provider: air config init"
-  info "  2. Run health check: air doctor"
-  info "  3. Try a review: air ai-review --staged"
+  if [[ -z "$cfg_provider" ]]; then
+    info "  1. Configure your AI provider: air config init"
+    info "  2. Run health check: air doctor"
+    info "  3. Try a review: air ai-review --staged"
+  else
+    info "  1. Run health check: air doctor"
+    info "  2. Try a review: air ai-review --staged"
+  fi
 }
 
 _init_setup_lefthook() {

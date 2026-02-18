@@ -6,11 +6,19 @@ load '../test_helper'
 setup() {
   TEST_TEMP_DIR="$(mktemp -d)"
   export TEST_TEMP_DIR
+  export AIR_CONFIG_DIR="${TEST_TEMP_DIR}/globalcfg"
   export NO_COLOR=1
-  unset _AIR_COLORS_LOADED _AIR_PLATFORM_LOADED
+  unset _AIR_COLORS_LOADED _AIR_PLATFORM_LOADED _AIR_GLOBAL_CONFIG_LOADED
+  unset _AIR_CONFIG_LOADED _AIR_UTILS_LOADED _AIR_INTERACTIVE_LOADED
+  unset _AIR_GLOBAL_CONFIG _AIR_CONFIG
+  unset AI_REVIEW_PROVIDER AI_REVIEW_MODEL AI_REVIEW_API_KEY
   source "${AIR_ROOT}/lib/core/colors.sh"
+  source "${AIR_ROOT}/lib/core/utils.sh"
   source "${AIR_ROOT}/lib/core/platform.sh"
+  source "${AIR_ROOT}/lib/core/global_config.sh"
+  source "${AIR_ROOT}/lib/core/config.sh"
   source "${AIR_ROOT}/lib/commands/init.sh"
+  global_config_load
 }
 
 @test "init: creates .ai-reviewer.yml" {
@@ -63,4 +71,25 @@ setup() {
   assert_success
   assert_output --partial "USAGE"
   assert_output --partial "--force"
+}
+
+@test "init: uses configured provider in generated yml" {
+  global_config_set "provider" "openai"
+  global_config_set "model" "gpt-4o"
+  cd "${TEST_TEMP_DIR}"
+  run command_init
+  assert_success
+  run cat "${TEST_TEMP_DIR}/.ai-reviewer.yml"
+  assert_output --partial "provider: openai"
+  assert_output --partial "model: gpt-4o"
+}
+
+@test "init: defaults provider model when only provider configured" {
+  global_config_set "provider" "gemini"
+  cd "${TEST_TEMP_DIR}"
+  run command_init
+  assert_success
+  run cat "${TEST_TEMP_DIR}/.ai-reviewer.yml"
+  assert_output --partial "provider: gemini"
+  assert_output --partial "model: gemini-2.0-flash"
 }
