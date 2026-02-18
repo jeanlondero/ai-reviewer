@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Run ShellCheck on lib and bin
+        run: |
+          shellcheck bin/ai-reviewer lib/core/*.sh lib/commands/*.sh install.sh
+          if [[ -d completions ]]; then
+            shellcheck completions/*.bash
+          fi
+
+  test:
+    name: Tests (Ubuntu)
+    needs: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install bats dependencies
+        run: |
+          if [[ ! -d test/bats ]]; then
+            git clone --depth 1 https://github.com/bats-core/bats-core.git test/bats
+          fi
+          if [[ ! -d test/bats-support ]]; then
+            git clone --depth 1 https://github.com/bats-core/bats-support.git test/bats-support
+          fi
+          if [[ ! -d test/bats-assert ]]; then
+            git clone --depth 1 https://github.com/bats-core/bats-assert.git test/bats-assert
+          fi
+
+      - name: Run tests
+        run: ./test/bats/bin/bats test/core/ test/commands/ test/integration/
+
+  test-macos:
+    name: Tests (macOS)
+    needs: shellcheck
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Bash 4+
+        run: brew install bash
+
+      - name: Install bats dependencies
+        run: |
+          if [[ ! -d test/bats ]]; then
+            git clone --depth 1 https://github.com/bats-core/bats-core.git test/bats
+          fi
+          if [[ ! -d test/bats-support ]]; then
+            git clone --depth 1 https://github.com/bats-core/bats-support.git test/bats-support
+          fi
+          if [[ ! -d test/bats-assert ]]; then
+            git clone --depth 1 https://github.com/bats-core/bats-assert.git test/bats-assert
+          fi
+
+      - name: Run tests
+        run: ./test/bats/bin/bats test/core/ test/commands/ test/integration/
