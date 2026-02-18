@@ -97,3 +97,67 @@ setup() {
   assert_success
   assert_output --partial "${TEST_TEMP_DIR}/config"
 }
+
+@test "config command: init non-TTY shows manual instructions" {
+  # Source interactive and models for the init wizard
+  source "${AIR_ROOT}/lib/core/interactive.sh"
+  source "${AIR_ROOT}/lib/core/models.sh"
+  source "${AIR_ROOT}/lib/core/ai_client.sh"
+  # run captures stdout+stderr and makes it non-TTY
+  run command_config init
+  assert_success
+  assert_output --partial "Non-interactive"
+  assert_output --partial "air config set provider"
+}
+
+@test "config command: init wizard sets provider via redirect" {
+  source "${AIR_ROOT}/lib/core/interactive.sh"
+  source "${AIR_ROOT}/lib/core/models.sh"
+  source "${AIR_ROOT}/lib/core/ai_client.sh"
+
+  # Mock ai_validate_key to avoid real API calls
+  ai_validate_key() { return 2; }
+  export -f ai_validate_key
+
+  _test_init_wizard() {
+    # Override interactive check
+    air_is_interactive() { return 0; }
+    # Feed: provider=1(claude), no keep key, key=test123, enter, model=1(default)
+    command_config init <<< "$(printf '1\ntest123\n1\n')"
+  }
+  run _test_init_wizard
+  assert_success
+  assert_output --partial "Provider: claude"
+  assert_output --partial "API key: saved"
+}
+
+@test "config command: init wizard skip provider" {
+  source "${AIR_ROOT}/lib/core/interactive.sh"
+  source "${AIR_ROOT}/lib/core/models.sh"
+  source "${AIR_ROOT}/lib/core/ai_client.sh"
+
+  _test_init_skip() {
+    air_is_interactive() { return 0; }
+    # Feed: provider=4(skip)
+    command_config init <<< "4"
+  }
+  run _test_init_skip
+  assert_success
+  assert_output --partial "Skipped provider"
+}
+
+@test "config command: init summary shows status labels" {
+  source "${AIR_ROOT}/lib/core/interactive.sh"
+  source "${AIR_ROOT}/lib/core/models.sh"
+  source "${AIR_ROOT}/lib/core/ai_client.sh"
+
+  # Pre-configure
+  global_config_set "provider" "claude"
+  global_config_set "api_key" "sk-test-123"
+  global_config_set "model" "claude-sonnet-4-20250514"
+
+  run _config_init_summary
+  assert_success
+  assert_output --partial "Configuration saved"
+  assert_output --partial "configured"
+}
