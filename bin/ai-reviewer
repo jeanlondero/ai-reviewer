@@ -29,6 +29,7 @@ source "${AIR_ROOT}/lib/core/version.sh"
 source "${AIR_ROOT}/lib/core/dotenv.sh"
 source "${AIR_ROOT}/lib/core/global_config.sh"
 source "${AIR_ROOT}/lib/core/config.sh"
+source "${AIR_ROOT}/lib/core/ai_client.sh"
 
 # --- Bash version gate ---
 check_bash_version || exit 1
